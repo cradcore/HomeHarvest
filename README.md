@@ -1,5 +1,9 @@
 <img src="https://github.com/ZacharyHampton/HomeHarvest/assets/78247585/d1a2bf8b-09f5-4c57-b33a-0ada8a34f12d" width="400">
 
+---
+**This fork re-adds the Zillow support that the original repository removed back in v0.2.19**
+---
+
 **HomeHarvest** is a real estate scraping library that extracts and formats data in the style of MLS listings.
 
 **Not technical?** Try out the web scraping tool on our site at [tryhomeharvest.com](https://tryhomeharvest.com).
@@ -37,6 +41,7 @@ filename = f"HomeHarvest_{current_timestamp}.csv"
 
 properties = scrape_property(
   location="San Diego, CA",
+  site_name="zillow",
   listing_type="sold",  # or (for_sale, for_rent, pending)
   past_days=30,  # sold in last 30 days - listed in last 30 days if (for_sale, for_rent)
   
