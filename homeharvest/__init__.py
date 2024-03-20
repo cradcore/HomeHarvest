@@ -22,6 +22,7 @@ def scrape_property(
     proxy: str = None,
     date_from: str = None,
     date_to: str = None,
+    foreclosure: bool = None,
 ) -> pd.DataFrame:
     """
     Scrape properties from Realtor.com/Zillow based on a given location and listing type.
@@ -49,6 +50,7 @@ def scrape_property(
         last_x_days=past_days,
         date_from=date_from,
         date_to=date_to,
+        foreclosure=foreclosure,
     )
 
     site = _scrapers[site_name.lower()](scraper_input)

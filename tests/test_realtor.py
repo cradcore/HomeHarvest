@@ -131,6 +131,15 @@ def test_realtor():
     assert all([result is not None for result in results])
 
 
+def test_realtor_city():
+    results = scrape_property(
+        location="Atlanta, GA",
+        listing_type="for_sale",
+    )
+
+    assert results is not None and len(results) > 0
+
+
 def test_realtor_bad_address():
     bad_results = scrape_property(
             location="abceefg ju098ot498hh9",
@@ -138,4 +147,16 @@ def test_realtor_bad_address():
         )
     if len(bad_results) == 0:
         assert True
+
+
+def test_realtor_foreclosed():
+    foreclosed = scrape_property(
+        location="Dallas, TX", listing_type="for_sale", past_days=100, foreclosure=True
+    )
+
+    not_foreclosed = scrape_property(
+        location="Dallas, TX", listing_type="for_sale", past_days=100, foreclosure=False
+    )
+
+    assert len(foreclosed) != len(not_foreclosed)
 

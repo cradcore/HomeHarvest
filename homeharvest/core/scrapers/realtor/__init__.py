@@ -9,7 +9,7 @@ from typing import Dict, Union, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .. import Scraper
-from ..models import Property, Address, ListingType, Description
+from ..models import Property, Address, ListingType, Description, PropertyType
 
 
 class RealtorScraper(Scraper):
@@ -84,11 +84,10 @@ class RealtorScraper(Scraper):
                             garage
                             permalink
                         }
-                        primary_photo {
-                            href
-                        }
-                        photos {
-                            href
+                        media {
+                            photos {
+                                href
+                            }
                         }
                     }
                 }"""
@@ -120,9 +119,11 @@ class RealtorScraper(Scraper):
             "list_date") else None
         last_sold_date_str = property_info["basic"]["sold_date"].split("T")[0] if property_info["basic"].get(
             "sold_date") else None
+        pending_date_str = property_info["pending_date"].split("T")[0] if property_info.get("pending_date") else None
 
         list_date = datetime.strptime(list_date_str, "%Y-%m-%d") if list_date_str else None
         last_sold_date = datetime.strptime(last_sold_date_str, "%Y-%m-%d") if last_sold_date_str else None
+        pending_date = datetime.strptime(pending_date_str, "%Y-%m-%d") if pending_date_str else None
         today = datetime.now()
 
         days_on_mls = None
@@ -150,6 +151,7 @@ class RealtorScraper(Scraper):
                and property_info["basic"].get("sqft")
             else None,
             last_sold_date=last_sold_date,
+            pending_date=pending_date,
             latitude=property_info["address"]["location"]["coordinate"].get("lat")
             if able_to_get_lat_long
             else None,
@@ -158,8 +160,7 @@ class RealtorScraper(Scraper):
             else None,
             address=self._parse_address(property_info, search_type="handle_listing"),
             description=Description(
-                primary_photo=property_info["primary_photo"].get("href", "").replace("s.jpg", "od-w480_h360_x2.webp?w=1080&q=75"),
-                alt_photos=self.process_alt_photos(property_info.get("photos", [])),
+                alt_photos=self.process_alt_photos(property_info.get("media", {}).get("photos", [])),
                 style=property_info["basic"].get("type", "").upper(),
                 beds=property_info["basic"].get("beds"),
                 baths_full=property_info["basic"].get("baths_full"),
@@ -289,7 +290,7 @@ class RealtorScraper(Scraper):
         ]
 
     def general_search(
-        self, variables: dict, search_type: str
+            self, variables: dict, search_type: str
     ) -> Dict[str, Union[int, list[Property]]]:
         """
         Handles a location area & returns a list of properties
@@ -298,6 +299,7 @@ class RealtorScraper(Scraper):
                             count
                             total
                             results {
+                                pending_date
                                 property_id
                                 list_date
                                 status
@@ -310,6 +312,7 @@ class RealtorScraper(Scraper):
                                     is_pending
                                 }
                                 description {
+                                    type
                                     sqft
                                     beds
                                     baths_full
@@ -384,6 +387,12 @@ class RealtorScraper(Scraper):
         )
 
         listing_type = ListingType.FOR_SALE if self.listing_type == ListingType.PENDING else self.listing_type
+        is_foreclosure = ""
+
+        if variables.get('foreclosure') is True:
+            is_foreclosure = "foreclosure: true"
+        elif variables.get('foreclosure') is False:
+            is_foreclosure = "foreclosure: false"
 
         if search_type == "comps":  #: comps search, came from an address
             query = """query Property_search(
@@ -393,6 +402,7 @@ class RealtorScraper(Scraper):
                     ) {
                         home_search(
                             query: { 
+                                %s
                                 nearby: {
                                     coordinates: $coordinates
                                     radius: $radius 
@@ -405,6 +415,7 @@ class RealtorScraper(Scraper):
                             limit: 200
                             offset: $offset
                     ) %s""" % (
+                is_foreclosure,
                 listing_type.value.lower(),
                 date_param,
                 pending_or_contingent_param,
@@ -421,6 +432,7 @@ class RealtorScraper(Scraper):
                             ) {
                                 home_search(
                                     query: {
+                                        %s
                                         city: $city
                                         county: $county
                                         postal_code: $postal_code
@@ -433,6 +445,7 @@ class RealtorScraper(Scraper):
                                     limit: 200
                                     offset: $offset
                                 ) %s""" % (
+                is_foreclosure,
                 listing_type.value.lower(),
                 date_param,
                 pending_or_contingent_param,
@@ -441,7 +454,7 @@ class RealtorScraper(Scraper):
             )
         else:  #: general search, came from an address
             query = (
-                """query Property_search(
+                    """query Property_search(
                         $property_id: [ID]!
                         $offset: Int!,
                     ) {
@@ -452,7 +465,7 @@ class RealtorScraper(Scraper):
                             limit: 1
                             offset: $offset
                         ) %s"""
-                % results_query
+                    % results_query
             )
 
         payload = {
@@ -468,12 +481,12 @@ class RealtorScraper(Scraper):
         properties: list[Property] = []
 
         if (
-            response_json is None
-            or "data" not in response_json
-            or response_json["data"] is None
-            or search_key not in response_json["data"]
-            or response_json["data"][search_key] is None
-            or "results" not in response_json["data"][search_key]
+                response_json is None
+                or "data" not in response_json
+                or response_json["data"] is None
+                or search_key not in response_json["data"]
+                or response_json["data"][search_key] is None
+                or "results" not in response_json["data"][search_key]
         ):
             return {"total": 0, "properties": []}
 
@@ -488,10 +501,10 @@ class RealtorScraper(Scraper):
                 continue
 
             able_to_get_lat_long = (
-                result
-                and result.get("location")
-                and result["location"].get("address")
-                and result["location"]["address"].get("coordinate")
+                    result
+                    and result.get("location")
+                    and result["location"].get("address")
+                    and result["location"]["address"].get("coordinate")
             )
 
             is_pending = result["flags"].get("is_pending") or result["flags"].get("is_contingent")
@@ -505,7 +518,7 @@ class RealtorScraper(Scraper):
                 mls_id=result["source"].get("listing_id")
                 if "source" in result and isinstance(result["source"], dict)
                 else None,
-                property_url=f"{self.PROPERTY_URL}{result['property_id']}",
+                property_url=f"{self.PROPERTY_URL}{result['property_id']}" if self.listing_type != ListingType.FOR_RENT else f"{self.PROPERTY_URL}M{result['property_id']}?listing_status=rental",
                 status="PENDING" if is_pending else result["status"].upper(),
                 list_price=result["list_price"],
                 list_date=result["list_date"].split("T")[0]
@@ -569,11 +582,19 @@ class RealtorScraper(Scraper):
                     return gql_results["properties"]
 
             else:  #: general search, comps (radius)
+                if not location_info.get("centroid"):
+                    return []
+
                 coordinates = list(location_info["centroid"].values())
                 search_variables |= {
                     "coordinates": coordinates,
                     "radius": "{}mi".format(self.radius),
                 }
+
+        elif location_type == "postal_code":
+            search_variables |= {
+                "postal_code": location_info.get("postal_code"),
+            }
 
         else:  #: general search, location
             search_variables |= {
@@ -582,6 +603,9 @@ class RealtorScraper(Scraper):
                 "state_code": location_info.get("state_code"),
                 "postal_code": location_info.get("postal_code"),
             }
+
+        if self.foreclosure:
+            search_variables['foreclosure'] = self.foreclosure
 
         result = self.general_search(search_variables, search_type=search_type)
         total = result["total"]
@@ -643,7 +667,6 @@ class RealtorScraper(Scraper):
 
     @staticmethod
     def _parse_description(result: dict) -> Description:
-
         description_data = result.get("description", {})
 
         if description_data is None or not isinstance(description_data, dict):
@@ -663,7 +686,7 @@ class RealtorScraper(Scraper):
         return Description(
             primary_photo=primary_photo,
             alt_photos=RealtorScraper.process_alt_photos(result.get("photos")),
-            style=style,
+            style=PropertyType(style) if style else None,
             beds=description_data.get("beds"),
             baths_full=description_data.get("baths_full"),
             baths_half=description_data.get("baths_half"),
@@ -674,7 +697,6 @@ class RealtorScraper(Scraper):
             garage=description_data.get("garage"),
             stories=description_data.get("stories"),
         )
-
 
     @staticmethod
     def calculate_days_on_mls(result: dict) -> Optional[int]:
