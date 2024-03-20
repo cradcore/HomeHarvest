@@ -243,6 +243,7 @@ class RealtorScraper(Scraper):
 
         return [
             Property(
+                site_name=self.sight_name,
                 mls_id=property_id,
                 property_url=f"{self.PROPERTY_URL}{property_info['details']['permalink']}",
                 address=self._parse_address(
@@ -437,6 +438,7 @@ class RealtorScraper(Scraper):
             )
 
             realty_property = Property(
+                site_name=self.site_name,
                 mls=mls,
                 mls_id=result["source"].get("listing_id")
                 if "source" in result and isinstance(result["source"], dict)

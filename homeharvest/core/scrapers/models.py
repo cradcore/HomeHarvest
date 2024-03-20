@@ -48,6 +48,7 @@ class Description:
 @dataclass
 class Property:
     property_url: str
+    site_name: str | None = None
     mls: str | None = None
     mls_id: str | None = None
     status: str | None = None

@@ -4,3 +4,6 @@ class InvalidListingType(Exception):
 
 class NoResultsFound(Exception):
     """Raised when no results are found for the given location"""
+
+class GeoCoordsNotFound(Exception):
+    """Raised when no property is found for the given address"""

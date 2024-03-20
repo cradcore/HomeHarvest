@@ -8,6 +8,7 @@ from .models import Property, ListingType, SiteName
 class ScraperInput:
     location: str
     listing_type: ListingType
+    site_name: SiteName
     radius: float | None = None
     mls_only: bool | None = None
     proxy: str | None = None
@@ -35,6 +36,7 @@ class Scraper:
             self.session.proxies.update(proxies)
 
         self.listing_type = scraper_input.listing_type
+        self.site_name = scraper_input.site_name
         self.radius = scraper_input.radius
         self.last_x_days = scraper_input.last_x_days
         self.mls_only = scraper_input.mls_only

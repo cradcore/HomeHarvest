@@ -54,6 +54,8 @@ options:
                         Proxy to use for scraping                                                                             
   -d DAYS, --days DAYS  Sold/listed in last _ days filter.                                                                           
   -r RADIUS, --radius RADIUS                                                                                                  
+                        Get comparable properties within _ (eg. 0.0) miles. Only applicable for individual addresses.
+  -s SITE, --site SITE  Specify site to pull from (realtor.com/zillow). Default is "realtor.com"
                         Get comparable properties within _ (eg. 0.0) miles. Only applicable for individual addresses.        
   -m, --mls_only        If set, fetches only MLS listings.
 ```

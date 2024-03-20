@@ -10,6 +10,15 @@ def main():
     )
 
     parser.add_argument(
+        "-s",
+        "--site_name",
+        type=str,
+        nargs="*",
+        default=None,
+        help="Site name(s) to scrape from (e.g., realtor, zillow)",
+    )
+
+    parser.add_argument(
         "-l",
         "--listing_type",
         type=str,
