@@ -1,18 +1,29 @@
 [tool.poetry]
 name = "homeharvest"
 version = "0.3.14"
-description = "Real estate scraping library"
-authors = ["Zachary Hampton <zachary@bunsly.com>", "Cullen Watson <cullen@bunsly.com>"]
-homepage = "https://github.com/Bunsly/HomeHarvest"
+description = "Real estate scraping library with Zillow/Realtor.com support"
+authors = ["Zachary Hampton <zachary@bunsly.com>", "Cullen Watson <cullen@bunsly.com>", "cradcore <cradcore@users.noreply.github.com>"]
+homepage = "https://github.com/cradcore/HomeHarvest"
 readme = "README.md"
 
 [tool.poetry.scripts]
 homeharvest = "homeharvest.cli:main"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.13"
+certifi = "^2024.2.2"
+charset-normalizer = "^3.3.2"
+idna = "^3.6"
+numpy = "^1.26.4"
+pandas = "^2.2.1"
+python-dateutil = "^2.9.0"
+pytz = "^2024.1"
 requests = "^2.31.0"
-pandas = "^2.1.1"
+six = "^1.16.0"
+tls-client = "^1.0.1"
+typing_extensions = "^4.10.0"
+tzdata = "^2024.1"
+urllib3 = "^2.2.1"
+
 
 
 [tool.poetry.group.dev.dependencies]
