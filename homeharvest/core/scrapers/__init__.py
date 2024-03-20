@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 import requests
-import tls_client
 from .models import Property, ListingType, SiteName
 
 
@@ -13,14 +12,13 @@ class ScraperInput:
     mls_only: bool | None = None
     proxy: str | None = None
     last_x_days: int | None = None
-    pending_or_contingent: bool | None = None
 
 
 class Scraper:
     def __init__(
         self,
         scraper_input: ScraperInput,
-        session: requests.Session | tls_client.Session = None,
+        session: requests.Session = None,
     ):
         self.location = scraper_input.location
         self.listing_type = scraper_input.listing_type
@@ -40,7 +38,6 @@ class Scraper:
         self.radius = scraper_input.radius
         self.last_x_days = scraper_input.last_x_days
         self.mls_only = scraper_input.mls_only
-        self.pending_or_contingent = scraper_input.pending_or_contingent
 
     def search(self) -> list[Property]:
         ...

@@ -7,24 +7,54 @@ from homeharvest.exceptions import (
 
 def test_realtor_pending_or_contingent():
     pending_or_contingent_result = scrape_property(
-        location="Surprise, AZ",
-        pending_or_contingent=True,
+        location="Surprise, AZ", listing_type="pending"
     )
 
-    regular_result = scrape_property(
-        location="Surprise, AZ",
-        pending_or_contingent=False,
-    )
+    regular_result = scrape_property(location="Surprise, AZ", listing_type="for_sale")
 
-    assert all([result is not None for result in [pending_or_contingent_result, regular_result]])
+    assert all(
+        [
+            result is not None
+            for result in [pending_or_contingent_result, regular_result]
+        ]
+    )
     assert len(pending_or_contingent_result) != len(regular_result)
+
+
+def test_realtor_pending_comps():
+    pending_comps = scrape_property(
+        location="2530 Al Lipscomb Way",
+        radius=5,
+        past_days=180,
+        listing_type="pending",
+    )
+
+    for_sale_comps = scrape_property(
+        location="2530 Al Lipscomb Way",
+        radius=5,
+        past_days=180,
+        listing_type="for_sale",
+    )
+
+    sold_comps = scrape_property(
+        location="2530 Al Lipscomb Way",
+        radius=5,
+        past_days=180,
+        listing_type="sold",
+    )
+
+    results = [pending_comps, for_sale_comps, sold_comps]
+    assert all([result is not None for result in results])
+
+    #: assert all lengths are different
+    assert len(set([len(result) for result in results])) == len(results)
 
 
 def test_realtor_comps():
     result = scrape_property(
         location="2530 Al Lipscomb Way",
         radius=0.5,
-        property_younger_than=180,
+        past_days=180,
         listing_type="sold",
     )
 
@@ -33,11 +63,11 @@ def test_realtor_comps():
 
 def test_realtor_last_x_days_sold():
     days_result_30 = scrape_property(
-        location="Dallas, TX", listing_type="sold", property_younger_than=30
+        location="Dallas, TX", listing_type="sold", past_days=30
     )
 
     days_result_10 = scrape_property(
-        location="Dallas, TX", listing_type="sold", property_younger_than=10
+        location="Dallas, TX", listing_type="sold", past_days=10
     )
 
     assert all(

@@ -19,8 +19,7 @@ def scrape_property(
     listing_type: str = "for_sale",
     radius: float = None,
     mls_only: bool = False,
-    property_younger_than: int = None,
-    pending_or_contingent: bool = False,
+    past_days: int = None,
     proxy: str = None,
 ) -> pd.DataFrame:
     """
@@ -29,8 +28,7 @@ def scrape_property(
     :param listing_type: Listing Type (for_sale, for_rent, sold)
     :param radius: Get properties within _ (e.g. 1.0) miles. Only applicable for individual addresses.
     :param mls_only: If set, fetches only listings with MLS IDs.
-    :param property_younger_than: Get properties sold/listed in last _ days.
-    :param pending_or_contingent: If set, fetches only pending or contingent listings. Only applicable for for_sale listings from general area searches.
+    :param past_days: Get properties sold or listed (dependent on your listing_type) in the last _ days.
     :param proxy: Proxy to use for scraping
     """
     validate_input(listing_type)
@@ -45,8 +43,7 @@ def scrape_property(
         proxy=proxy,
         radius=radius,
         mls_only=mls_only,
-        last_x_days=property_younger_than,
-        pending_or_contingent=pending_or_contingent,
+        last_x_days=past_days,
     )
 
     site = _scrapers[site_name.lower()](scraper_input)

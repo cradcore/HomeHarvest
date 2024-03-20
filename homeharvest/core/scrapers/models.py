@@ -19,6 +19,7 @@ class SiteName(Enum):
 class ListingType(Enum):
     FOR_SALE = "FOR_SALE"
     FOR_RENT = "FOR_RENT"
+    PENDING = "PENDING"
     SOLD = "SOLD"
 
 
@@ -59,6 +60,7 @@ class Property:
     last_sold_date: str | None = None
     prc_sqft: int | None = None
     hoa_fee: int | None = None
+    days_on_mls: int | None = None
     description: Description | None = None
 
     latitude: float | None = None

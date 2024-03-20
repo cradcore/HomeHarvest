@@ -23,7 +23,7 @@ def main():
         "--listing_type",
         type=str,
         default="for_sale",
-        choices=["for_sale", "for_rent", "sold"],
+        choices=["for_sale", "for_rent", "sold", "pending"],
         help="Listing type to scrape",
     )
 
@@ -77,7 +77,7 @@ def main():
         radius=args.radius,
         proxy=args.proxy,
         mls_only=args.mls_only,
-        property_younger_than=args.days,
+        past_days=args.days,
     )
 
     if not args.filename:
