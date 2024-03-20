@@ -9,7 +9,6 @@ from typing import Dict, Union, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .. import Scraper
-from ....exceptions import NoResultsFound
 from ..models import Property, Address, ListingType, Description
 
 
@@ -38,7 +37,7 @@ class RealtorScraper(Scraper):
         result = response_json["autocomplete"]
 
         if not result:
-            raise NoResultsFound("No results found for location: " + self.location)
+            return None
 
         return result[0]
 
@@ -50,6 +49,7 @@ class RealtorScraper(Scraper):
                             listing_id
                         }
                         address {
+                            street_direction
                             street_number
                             street_name
                             street_suffix
@@ -83,6 +83,12 @@ class RealtorScraper(Scraper):
                             stories
                             garage
                             permalink
+                        }
+                        primary_photo {
+                            href
+                        }
+                        photos {
+                            href
                         }
                     }
                 }"""
@@ -152,6 +158,8 @@ class RealtorScraper(Scraper):
             else None,
             address=self._parse_address(property_info, search_type="handle_listing"),
             description=Description(
+                primary_photo=property_info["primary_photo"].get("href", "").replace("s.jpg", "od-w480_h360_x2.webp?w=1080&q=75"),
+                alt_photos=self.process_alt_photos(property_info.get("photos", [])),
                 style=property_info["basic"].get("type", "").upper(),
                 beds=property_info["basic"].get("beds"),
                 baths_full=property_info["basic"].get("baths_full"),
@@ -216,6 +224,7 @@ class RealtorScraper(Scraper):
                             stories
                         }
                         address {
+                            street_direction
                             street_number
                             street_name
                             street_suffix
@@ -245,6 +254,12 @@ class RealtorScraper(Scraper):
                             stories
                             units
                             year_built
+                        }
+                        primary_photo {
+                            href
+                        }
+                        photos {
+                            href
                         }
                     }
                 }"""
@@ -317,6 +332,7 @@ class RealtorScraper(Scraper):
                                 }
                                 location {
                                     address {
+                                        street_direction
                                         street_number
                                         street_name
                                         street_suffix
@@ -333,19 +349,27 @@ class RealtorScraper(Scraper):
                                         name
                                     }
                                 }
+                                primary_photo {
+                                    href
+                                }
+                                photos {
+                                    href
+                                }
                             }
                         }
                     }"""
 
-        date_param = (
-            'sold_date: { min: "$today-%sD" }' % self.last_x_days
-            if self.listing_type == ListingType.SOLD and self.last_x_days
-            else (
-                'list_date: { min: "$today-%sD" }' % self.last_x_days
-                if self.last_x_days
-                else ""
-            )
-        )
+        date_param = ""
+        if self.listing_type == ListingType.SOLD:
+            if self.date_from and self.date_to:
+                date_param = f'sold_date: {{ min: "{self.date_from}", max: "{self.date_to}" }}'
+            elif self.last_x_days:
+                date_param = f'sold_date: {{ min: "$today-{self.last_x_days}D" }}'
+        else:
+            if self.date_from and self.date_to:
+                date_param = f'list_date: {{ min: "{self.date_from}", max: "{self.date_to}" }}'
+            elif self.last_x_days:
+                date_param = f'list_date: {{ min: "$today-{self.last_x_days}D" }}'
 
         sort_param = (
             "sort: [{ field: sold_date, direction: desc }]"
@@ -472,6 +496,9 @@ class RealtorScraper(Scraper):
 
             is_pending = result["flags"].get("is_pending") or result["flags"].get("is_contingent")
 
+            if is_pending and self.listing_type != ListingType.PENDING:
+                continue
+
             realty_property = Property(
                 site_name=self.site_name,
                 mls=mls,
@@ -508,6 +535,9 @@ class RealtorScraper(Scraper):
 
     def search(self):
         location_info = self.handle_location()
+        if not location_info:
+            return []
+
         location_type = location_info["area_type"]
 
         search_variables = {
@@ -586,25 +616,34 @@ class RealtorScraper(Scraper):
         return ", ".join(neighborhoods_list) if neighborhoods_list else None
 
     @staticmethod
-    def _parse_address(result: dict, search_type):
+    def handle_none_safely(address_part):
+        if address_part is None:
+            return ""
+
+        return address_part
+
+    def _parse_address(self, result: dict, search_type):
         if search_type == "general_search":
-            return Address(
-                street=f"{result['location']['address']['street_number']} {result['location']['address']['street_name']} {result['location']['address']['street_suffix']}",
-                unit=result["location"]["address"]["unit"],
-                city=result["location"]["address"]["city"],
-                state=result["location"]["address"]["state_code"],
-                zip=result["location"]["address"]["postal_code"],
-            )
+            address = result['location']['address']
+        else:
+            address = result["address"]
+
         return Address(
-            street=f"{result['address']['street_number']} {result['address']['street_name']} {result['address']['street_suffix']}",
-            unit=result["address"]["unit"],
-            city=result["address"]["city"],
-            state=result["address"]["state_code"],
-            zip=result["address"]["postal_code"],
+            street=" ".join([
+                self.handle_none_safely(address.get('street_number')),
+                self.handle_none_safely(address.get('street_direction')),
+                self.handle_none_safely(address.get('street_name')),
+                self.handle_none_safely(address.get('street_suffix')),
+            ]).strip(),
+            unit=address["unit"],
+            city=address["city"],
+            state=address["state_code"],
+            zip=address["postal_code"],
         )
 
     @staticmethod
     def _parse_description(result: dict) -> Description:
+
         description_data = result.get("description", {})
 
         if description_data is None or not isinstance(description_data, dict):
@@ -614,7 +653,16 @@ class RealtorScraper(Scraper):
         if style is not None:
             style = style.upper()
 
+        primary_photo = ""
+        if result and "primary_photo" in result:
+            primary_photo_info = result["primary_photo"]
+            if primary_photo_info and "href" in primary_photo_info:
+                primary_photo_href = primary_photo_info["href"]
+                primary_photo = primary_photo_href.replace("s.jpg", "od-w480_h360_x2.webp?w=1080&q=75")
+
         return Description(
+            primary_photo=primary_photo,
+            alt_photos=RealtorScraper.process_alt_photos(result.get("photos")),
             style=style,
             beds=description_data.get("beds"),
             baths_full=description_data.get("baths_full"),
@@ -626,6 +674,7 @@ class RealtorScraper(Scraper):
             garage=description_data.get("garage"),
             stories=description_data.get("stories"),
         )
+
 
     @staticmethod
     def calculate_days_on_mls(result: dict) -> Optional[int]:
@@ -645,3 +694,16 @@ class RealtorScraper(Scraper):
                 days = (today - list_date).days
                 if days >= 0:
                     return days
+
+    @staticmethod
+    def process_alt_photos(photos_info):
+        try:
+            alt_photos = []
+            if photos_info:
+                for photo_info in photos_info:
+                    href = photo_info.get("href", "")
+                    alt_photo_href = href.replace("s.jpg", "od-w480_h360_x2.webp?w=1080&q=75")
+                    alt_photos.append(alt_photo_href)
+            return alt_photos
+        except Exception:
+            pass

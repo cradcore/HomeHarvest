@@ -6,9 +6,9 @@
 
 **Not technical?** Try out the web scraping tool on our site at [tryhomeharvest.com](https://tryhomeharvest.com).
 
-*Looking to build a data-focused software product?* **[Book a call](https://calendly.com/zachary-products/15min)** *to work with us.*
+*Looking to build a data-focused software product?* **[Book a call](https://bunsly.com)** *to work with us.*
 
-Check out another project we wrote: ***[JobSpy](https://github.com/cullenwatson/JobSpy)** – a Python package for job scraping*
+Check out another project we wrote: ***[JobSpy](https://github.com/Bunsly/JobSpy)** – a Python package for job scraping*
 
 ## HomeHarvest Features
 
@@ -46,7 +46,11 @@ filename = f"HomeHarvest_{current_timestamp}.csv"
 properties = scrape_property(
   location="San Diego, CA",
   listing_type="sold",  # or (for_sale, for_rent, pending)
-  past_days=30,  # sold in last 30 days - listed in last x days if (for_sale, for_rent)
+  past_days=30,  # sold in last 30 days - listed in last 30 days if (for_sale, for_rent)
+  
+  # date_from="2023-05-01", # alternative to past_days 
+  # date_to="2023-05-28", 
+  
   # mls_only=True,  # only fetch MLS listings
   # proxy="http://user:pass@host:port"  # use a proxy to change your IP address
 )
@@ -117,11 +121,46 @@ Optional
 ├── past_days (integer): Number of past days to filter properties. Utilizes 'last_sold_date' for 'sold' listing types, and 'list_date' for others (for_rent, for_sale).
 │    Example: 30 (fetches properties listed/sold in the last 30 days)
 │
+├── date_from, date_to (string): Start and end dates to filter properties listed or sold, both dates are required.
+|    (use this to get properties in chunks as there's a 10k result limit)
+│    Format for both must be "YYYY-MM-DD". 
+│    Example: "2023-05-01", "2023-05-15" (fetches properties listed/sold between these dates)
+│
 ├── mls_only (True/False): If set, fetches only MLS listings (mainly applicable to 'sold' listings)
 │
 └── proxy (string): In format 'http://user:pass@host:port'
 
+
 ```
+
+### CLI 
+
+```
+usage: homeharvest [-l {for_sale,for_rent,sold}] [-o {excel,csv}] [-f FILENAME] [-p PROXY] [-d DAYS] [-r RADIUS] [-m] [-c] location
+                                                                                                                             
+Home Harvest Property Scraper                                                                                                 
+                                                                                                                             
+positional arguments:                                                                                                         
+  location              Location to scrape (e.g., San Francisco, CA)                                                          
+                                                                                                                             
+options:                                                                                                                      
+  -l {for_sale,for_rent,sold,pending}, --listing_type {for_sale,for_rent,sold,pending}                                                        
+                        Listing type to scrape                                                                                
+  -o {excel,csv}, --output {excel,csv}                                                                                        
+                        Output format                                                                                         
+  -f FILENAME, --filename FILENAME                                                                                            
+                        Name of the output file (without extension)                                                           
+  -p PROXY, --proxy PROXY                                                                                                     
+                        Proxy to use for scraping                                                                             
+  -d DAYS, --days DAYS  Sold/listed in last _ days filter.                                                                           
+  -r RADIUS, --radius RADIUS                                                                                                  
+                        Get comparable properties within _ (e.g., 0.0) miles. Only applicable for individual addresses.        
+  -m, --mls_only        If set, fetches only MLS listings.                                                                    
+```
+```bash
+homeharvest "San Francisco, CA" -l for_rent -o excel -f HomeHarvest
+```
+
 ### Property Schema
 ```plaintext
 Property
@@ -169,7 +208,7 @@ Property
 The following exceptions may be raised when using HomeHarvest:
 
 - `InvalidListingType` - valid options: `for_sale`, `for_rent`, `sold`
-- `NoResultsFound` - no properties found from your search
+- `InvalidDate` - date_from or date_to is not in the format YYYY-MM-DD
   
   
 ## Frequently Asked Questions
