@@ -1,5 +1,6 @@
 import warnings
 import pandas as pd
+from typing import Union
 
 from .core.scrapers import ScraperInput
 from .utils import process_result, ordered_properties, validate_input, validate_dates
@@ -14,7 +15,7 @@ _scrapers = {
 
 def scrape_property(
     location: str,
-    site_name: str = "realtor.com",
+    site_name: Union[str, list[str]] = [ "realtor.com" ],
     listing_type: str = "for_sale",
     radius: float = None,
     mls_only: bool = False,
@@ -27,6 +28,7 @@ def scrape_property(
     """
     Scrape properties from Realtor.com/Zillow based on a given location and listing type.
     :param location: Location to search (e.g. "Dallas, TX", "85281", "2530 Al Lipscomb Way")
+    :param site_name: Site to scrape (realtor.com, zillow)
     :param listing_type: Listing Type (for_sale, for_rent, sold)
     :param radius: Get properties within _ (e.g. 1.0) miles. Only applicable for individual addresses.
     :param mls_only: If set, fetches only listings with MLS IDs.
@@ -38,23 +40,28 @@ def scrape_property(
     validate_dates(date_from, date_to)
 
     if site_name is None:
-        site_name = _scrapers.keys()[0]
+        site_name = list(_scrapers.keys())
+    if not isinstance(site_name, list):
+        site_name = [site_name]
 
-    scraper_input = ScraperInput(
-        location=location,
-        site_name=site_name,
-        listing_type=ListingType[listing_type.upper()],
-        proxy=proxy,
-        radius=radius,
-        mls_only=mls_only,
-        last_x_days=past_days,
-        date_from=date_from,
-        date_to=date_to,
-        foreclosure=foreclosure,
-    )
+    results: list = []
+    for s in site_name:
+        scraper_input = ScraperInput(
+            location=location,
+            site_name=s,
+            listing_type=ListingType[listing_type.upper()],
+            proxy=proxy,
+            radius=radius,
+            mls_only=mls_only,
+            last_x_days=past_days,
+            date_from=date_from,
+            date_to=date_to,
+            foreclosure=foreclosure,
+        )
 
-    site = _scrapers[site_name.lower()](scraper_input)
-    results = site.search()
+        site = _scrapers[s.lower()](scraper_input)
+        searchResults = site.search()
+        results += searchResults
 
     properties_dfs = [process_result(result) for result in results]
     if not properties_dfs:
