@@ -401,11 +401,11 @@ class RealtorScraper(Scraper):
                     $offset: Int!,
                     ) {
                         home_search(
-                            query: { 
+                            query: {
                                 %s
                                 nearby: {
                                     coordinates: $coordinates
-                                    radius: $radius 
+                                    radius: $radius
                                 }
                                 status: %s
                                 %s
@@ -686,7 +686,7 @@ class RealtorScraper(Scraper):
         return Description(
             primary_photo=primary_photo,
             alt_photos=RealtorScraper.process_alt_photos(result.get("photos")),
-            style=PropertyType(style) if style else None,
+            style=PropertyType(style).value if style else None,
             beds=description_data.get("beds"),
             baths_full=description_data.get("baths_full"),
             baths_half=description_data.get("baths_half"),
