@@ -190,10 +190,12 @@ class ZillowScraper(Scraper):
                     longitude=result["latLong"]["longitude"],
                     neighborhoods=None,
                     description=Description(
+                        primary_photo=result["imgSrc"],
+                        alt_photos=None,
                         style=home_info["homeType"],
                         beds=int(home_info["bedrooms"]) if "bedrooms" in home_info else None,
-                        baths_full=int(home_info["bathrooms"] )if "bathrooms" in home_info else None,
-                        baths_half=None,
+                        baths_full=int(home_info["bathrooms"]) if "bathrooms" in home_info else None,
+                        baths_half=1 if ("bathrooms" in home_info and float(home_info["bathrooms"]) % 1 == 0.5) else 0,
                         sqft=int(home_info["livingArea"]) if "livingArea" in home_info else None,
                         lot_sqft=_parse_lot_sqft(result),
                         sold_price=None,
@@ -219,10 +221,12 @@ class ZillowScraper(Scraper):
                     longitude=result["latLong"]["longitude"],
                     neighborhoods=None,
                     description=Description(
+                        primary_photo=result["imgSrc"],
+                        alt_photos=None,
                         style="APARTMENT",
                         beds=int(result["minBeds"]) if "minBeds" in result else None,
                         baths_full=int(result["minBaths"] )if "minBaths" in result else None,
-                        baths_half=None,
+                        baths_half=1 if ("minBaths" in result and float(result["minBaths"]) % 1 == 0.5) else 0,
                         sqft=int(result["minArea"]) if "minArea" in result else None,
                         lot_sqft=_parse_lot_sqft(result),
                         sold_price=None,
@@ -325,7 +329,7 @@ def _parse_lot_sqft(result: dict):
         return area * 43560
     else:
         raise Exception("Unable to parse lot sqft, unknown unit: {}".format(units))
-    
+
 @staticmethod
 def _parse_list_date(timeOnZillow: int):
     # timeOnZillow represented in ms, convert to seconds
