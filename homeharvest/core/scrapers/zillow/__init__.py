@@ -23,7 +23,7 @@ class ZillowScraper(Scraper):
             client_identifier="chrome112", random_tls_extension_order=True
         )
 
-        super().__init__(scraper_input, session)
+        super().__init__(scraper_input)
 
         self.session.headers.update({
             'authority': 'www.zillow.com',

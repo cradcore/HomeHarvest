@@ -4,18 +4,22 @@ homeharvest.realtor.__init__
 
 This module implements the scraper for realtor.com
 """
+
+from __future__ import annotations
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Dict, Union, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .. import Scraper
-from ..models import Property, Address, ListingType, Description, PropertyType
+from ..models import Property, Address, ListingType, Description, PropertyType, Agent, Broker
 
 
 class RealtorScraper(Scraper):
     SEARCH_GQL_URL = "https://www.realtor.com/api/v1/rdc_search_srp?client_id=rdc-search-new-communities&schema=vesta"
     PROPERTY_URL = "https://www.realtor.com/realestateandhomes-detail/"
+    PROPERTY_GQL = "https://graph.realtor.com/graphql"
     ADDRESS_AUTOCOMPLETE_URL = "https://parser-external.geo.moveaws.com/suggest"
+    NUM_PROPERTY_WORKERS = 20
 
     def __init__(self, scraper_input):
         super().__init__(scraper_input)
@@ -49,6 +53,7 @@ class RealtorScraper(Scraper):
                             listing_id
                         }
                         address {
+                            line
                             street_direction
                             street_number
                             street_name
@@ -110,15 +115,17 @@ class RealtorScraper(Scraper):
         )
 
         able_to_get_lat_long = (
-                property_info
-                and property_info.get("address")
-                and property_info["address"].get("location")
-                and property_info["address"]["location"].get("coordinate")
+            property_info
+            and property_info.get("address")
+            and property_info["address"].get("location")
+            and property_info["address"]["location"].get("coordinate")
         )
-        list_date_str = property_info["basic"]["list_date"].split("T")[0] if property_info["basic"].get(
-            "list_date") else None
-        last_sold_date_str = property_info["basic"]["sold_date"].split("T")[0] if property_info["basic"].get(
-            "sold_date") else None
+        list_date_str = (
+            property_info["basic"]["list_date"].split("T")[0] if property_info["basic"].get("list_date") else None
+        )
+        last_sold_date_str = (
+            property_info["basic"]["sold_date"].split("T")[0] if property_info["basic"].get("sold_date") else None
+        )
         pending_date_str = property_info["pending_date"].split("T")[0] if property_info.get("pending_date") else None
 
         list_date = datetime.strptime(list_date_str, "%Y-%m-%d") if list_date_str else None
@@ -131,37 +138,42 @@ class RealtorScraper(Scraper):
         if list_date:
             if status == "sold" and last_sold_date:
                 days_on_mls = (last_sold_date - list_date).days
-            elif status in ('for_sale', 'for_rent'):
+            elif status in ("for_sale", "for_rent"):
                 days_on_mls = (today - list_date).days
             if days_on_mls and days_on_mls < 0:
                 days_on_mls = None
 
+        property_id = property_info["details"]["permalink"]
+        prop_details = self.get_prop_details(property_id)
+        style = property_info["basic"].get("type", "").upper()
         listing = Property(
             mls=mls,
-            mls_id=property_info["source"].get("listing_id")
-            if "source" in property_info and isinstance(property_info["source"], dict)
-            else None,
-            property_url=f"{self.PROPERTY_URL}{property_info['details']['permalink']}",
+            mls_id=(
+                property_info["source"].get("listing_id")
+                if "source" in property_info and isinstance(property_info["source"], dict)
+                else None
+            ),
+            property_url=f"{self.PROPERTY_URL}{property_id}",
             status=property_info["basic"]["status"].upper(),
             list_price=property_info["basic"]["price"],
             list_date=list_date,
-            prc_sqft=property_info["basic"].get("price")
-                     / property_info["basic"].get("sqft")
-            if property_info["basic"].get("price")
-               and property_info["basic"].get("sqft")
-            else None,
+            prc_sqft=(
+                property_info["basic"].get("price") / property_info["basic"].get("sqft")
+                if property_info["basic"].get("price") and property_info["basic"].get("sqft")
+                else None
+            ),
             last_sold_date=last_sold_date,
             pending_date=pending_date,
-            latitude=property_info["address"]["location"]["coordinate"].get("lat")
-            if able_to_get_lat_long
-            else None,
-            longitude=property_info["address"]["location"]["coordinate"].get("lon")
-            if able_to_get_lat_long
-            else None,
+            latitude=property_info["address"]["location"]["coordinate"].get("lat") if able_to_get_lat_long else None,
+            longitude=property_info["address"]["location"]["coordinate"].get("lon") if able_to_get_lat_long else None,
             address=self._parse_address(property_info, search_type="handle_listing"),
             description=Description(
-                alt_photos=self.process_alt_photos(property_info.get("media", {}).get("photos", [])),
-                style=property_info["basic"].get("type", "").upper(),
+                alt_photos=(
+                    self.process_alt_photos(property_info["media"].get("photos", []))
+                    if property_info.get("media")
+                    else None
+                ),
+                style=PropertyType.__getitem__(style) if style and style in PropertyType.__members__ else None,
                 beds=property_info["basic"].get("beds"),
                 baths_full=property_info["basic"].get("baths_full"),
                 baths_half=property_info["basic"].get("baths_half"),
@@ -171,8 +183,14 @@ class RealtorScraper(Scraper):
                 year_built=property_info["details"].get("year_built"),
                 garage=property_info["details"].get("garage"),
                 stories=property_info["details"].get("stories"),
+                text=property_info.get("description", {}).get("text"),
             ),
-            days_on_mls=days_on_mls
+            days_on_mls=days_on_mls,
+            agents=prop_details.get("agents"),
+            brokers=prop_details.get("brokers"),
+            nearby_schools=prop_details.get("schools"),
+            assessed_value=prop_details.get("assessed_value"),
+            estimated_value=prop_details.get("estimated_value"),
         )
 
         return [listing]
@@ -225,6 +243,7 @@ class RealtorScraper(Scraper):
                             stories
                         }
                         address {
+                            line
                             street_direction
                             street_number
                             street_name
@@ -266,6 +285,7 @@ class RealtorScraper(Scraper):
                 }"""
 
         variables = {"property_id": property_id}
+        prop_details = self.get_prop_details(property_id)
 
         payload = {
             "query": query,
@@ -282,16 +302,17 @@ class RealtorScraper(Scraper):
                 site_name=self.sight_name,
                 mls_id=property_id,
                 property_url=f"{self.PROPERTY_URL}{property_info['details']['permalink']}",
-                address=self._parse_address(
-                    property_info, search_type="handle_address"
-                ),
+                address=self._parse_address(property_info, search_type="handle_address"),
                 description=self._parse_description(property_info),
+                agents=prop_details.get("agents"),
+                brokers=prop_details.get("brokers"),
+                nearby_schools=prop_details.get("schools"),
+                assessed_value=prop_details.get("assessed_value"),
+                estimated_value=prop_details.get("estimated_value"),
             )
         ]
 
-    def general_search(
-            self, variables: dict, search_type: str
-    ) -> Dict[str, Union[int, list[Property]]]:
+    def general_search(self, variables: dict, search_type: str) -> Dict[str, Union[int, list[Property]]]:
         """
         Handles a location area & returns a list of properties
         """
@@ -325,6 +346,7 @@ class RealtorScraper(Scraper):
                                     type
                                     name
                                     stories
+                                    text
                                 }
                                 source {
                                     id
@@ -339,6 +361,7 @@ class RealtorScraper(Scraper):
                                         street_number
                                         street_name
                                         street_suffix
+                                        line
                                         unit
                                         city
                                         state_code
@@ -348,9 +371,16 @@ class RealtorScraper(Scraper):
                                             lat
                                         }
                                     }
+                                    county {
+                                        name
+                                        fips_code
+                                    }
                                     neighborhoods {
                                         name
                                     }
+                                }
+                                tax_record {
+                                    public_record_id
                                 }
                                 primary_photo {
                                     href
@@ -381,17 +411,15 @@ class RealtorScraper(Scraper):
         )
 
         pending_or_contingent_param = (
-            "or_filters: { contingent: true, pending: true }"
-            if self.listing_type == ListingType.PENDING
-            else ""
+            "or_filters: { contingent: true, pending: true }" if self.listing_type == ListingType.PENDING else ""
         )
 
         listing_type = ListingType.FOR_SALE if self.listing_type == ListingType.PENDING else self.listing_type
         is_foreclosure = ""
 
-        if variables.get('foreclosure') is True:
+        if variables.get("foreclosure") is True:
             is_foreclosure = "foreclosure: true"
-        elif variables.get('foreclosure') is False:
+        elif variables.get("foreclosure") is False:
             is_foreclosure = "foreclosure: false"
 
         if search_type == "comps":  #: comps search, came from an address
@@ -454,7 +482,7 @@ class RealtorScraper(Scraper):
             )
         else:  #: general search, came from an address
             query = (
-                    """query Property_search(
+                """query Property_search(
                         $property_id: [ID]!
                         $offset: Int!,
                     ) {
@@ -465,7 +493,7 @@ class RealtorScraper(Scraper):
                             limit: 1
                             offset: $offset
                         ) %s"""
-                    % results_query
+                % results_query
             )
 
         payload = {
@@ -474,72 +502,86 @@ class RealtorScraper(Scraper):
         }
 
         response = self.session.post(self.SEARCH_GQL_URL, json=payload)
-        response.raise_for_status()
         response_json = response.json()
         search_key = "home_search" if "home_search" in query else "property_search"
 
         properties: list[Property] = []
 
         if (
-                response_json is None
-                or "data" not in response_json
-                or response_json["data"] is None
-                or search_key not in response_json["data"]
-                or response_json["data"][search_key] is None
-                or "results" not in response_json["data"][search_key]
+            response_json is None
+            or "data" not in response_json
+            or response_json["data"] is None
+            or search_key not in response_json["data"]
+            or response_json["data"][search_key] is None
+            or "results" not in response_json["data"][search_key]
         ):
             return {"total": 0, "properties": []}
 
-        for result in response_json["data"][search_key]["results"]:
-            mls = (
-                result["source"].get("id")
-                if "source" in result and isinstance(result["source"], dict)
-                else None
-            )
+        def process_property(result: dict) -> Property | None:
+            mls = result["source"].get("id") if "source" in result and isinstance(result["source"], dict) else None
 
             if not mls and self.mls_only:
-                continue
+                return
 
             able_to_get_lat_long = (
-                    result
-                    and result.get("location")
-                    and result["location"].get("address")
-                    and result["location"]["address"].get("coordinate")
+                result
+                and result.get("location")
+                and result["location"].get("address")
+                and result["location"]["address"].get("coordinate")
             )
 
             is_pending = result["flags"].get("is_pending") or result["flags"].get("is_contingent")
 
-            if is_pending and self.listing_type != ListingType.PENDING:
-                continue
+            if is_pending and (self.exclude_pending and self.listing_type != ListingType.PENDING):
+                return
+
+            property_id = result["property_id"]
+            prop_details = self.get_prop_details(property_id) if self.extra_property_data else {}
 
             realty_property = Property(
                 site_name=self.site_name,
                 mls=mls,
-                mls_id=result["source"].get("listing_id")
-                if "source" in result and isinstance(result["source"], dict)
-                else None,
-                property_url=f"{self.PROPERTY_URL}{result['property_id']}" if self.listing_type != ListingType.FOR_RENT else f"{self.PROPERTY_URL}M{result['property_id']}?listing_status=rental",
+                mls_id=(
+                    result["source"].get("listing_id")
+                    if "source" in result and isinstance(result["source"], dict)
+                    else None
+                ),
+                property_url=(
+                    f"{self.PROPERTY_URL}{property_id}"
+                    if self.listing_type != ListingType.FOR_RENT
+                    else f"{self.PROPERTY_URL}M{property_id}?listing_status=rental"
+                ),
                 status="PENDING" if is_pending else result["status"].upper(),
                 list_price=result["list_price"],
-                list_date=result["list_date"].split("T")[0]
-                if result.get("list_date")
-                else None,
+                list_date=result["list_date"].split("T")[0] if result.get("list_date") else None,
                 prc_sqft=result.get("price_per_sqft"),
                 last_sold_date=result.get("last_sold_date"),
-                hoa_fee=result["hoa"]["fee"]
-                if result.get("hoa") and isinstance(result["hoa"], dict)
-                else None,
-                latitude=result["location"]["address"]["coordinate"].get("lat")
-                if able_to_get_lat_long
-                else None,
-                longitude=result["location"]["address"]["coordinate"].get("lon")
-                if able_to_get_lat_long
-                else None,
+                hoa_fee=result["hoa"]["fee"] if result.get("hoa") and isinstance(result["hoa"], dict) else None,
+                latitude=result["location"]["address"]["coordinate"].get("lat") if able_to_get_lat_long else None,
+                longitude=result["location"]["address"]["coordinate"].get("lon") if able_to_get_lat_long else None,
                 address=self._parse_address(result, search_type="general_search"),
                 description=self._parse_description(result),
-                days_on_mls=self.calculate_days_on_mls(result)
+                neighborhoods=self._parse_neighborhoods(result),
+                county=result["location"]["county"].get("name") if result["location"]["county"] else None,
+                fips_code=result["location"]["county"].get("fips_code") if result["location"]["county"] else None,
+                days_on_mls=self.calculate_days_on_mls(result),
+                agents=prop_details.get("agents"),
+                brokers=prop_details.get("brokers"),
+                nearby_schools=prop_details.get("schools"),
+                assessed_value=prop_details.get("assessed_value"),
+                estimated_value=prop_details.get("estimated_value"),
             )
-            properties.append(realty_property)
+            return realty_property
+
+        with ThreadPoolExecutor(max_workers=self.NUM_PROPERTY_WORKERS) as executor:
+            futures = [
+                executor.submit(process_property, result) for result in response_json["data"][search_key]["results"]
+            ]
+
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    properties.append(result)
 
         return {
             "total": response_json["data"][search_key]["total"],
@@ -560,18 +602,14 @@ class RealtorScraper(Scraper):
         search_type = (
             "comps"
             if self.radius and location_type == "address"
-            else "address"
-            if location_type == "address" and not self.radius
-            else "area"
+            else "address" if location_type == "address" and not self.radius else "area"
         )
         if location_type == "address":
             if not self.radius:  #: single address search, non comps
                 property_id = location_info["mpr_id"]
                 search_variables |= {"property_id": property_id}
 
-                gql_results = self.general_search(
-                    search_variables, search_type=search_type
-                )
+                gql_results = self.general_search(search_variables, search_type=search_type)
                 if gql_results["total"] == 0:
                     listing_id = self.get_latest_listing_id(property_id)
                     if listing_id is None:
@@ -605,13 +643,13 @@ class RealtorScraper(Scraper):
             }
 
         if self.foreclosure:
-            search_variables['foreclosure'] = self.foreclosure
+            search_variables["foreclosure"] = self.foreclosure
 
         result = self.general_search(search_variables, search_type=search_type)
         total = result["total"]
         homes = result["properties"]
 
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor() as executor:
             futures = [
                 executor.submit(
                     self.general_search,
@@ -625,6 +663,88 @@ class RealtorScraper(Scraper):
                 homes.extend(future.result()["properties"])
 
         return homes
+
+    def get_prop_details(self, property_id: str) -> dict:
+        if not self.extra_property_data:
+            return {}
+
+        #: TODO: migrate "advertisers" and "estimates" to general query
+
+        query = """query GetHome($property_id: ID!) {
+                    home(property_id: $property_id) {
+                        __typename
+
+                        advertisers {
+                            __typename
+                            type
+                            name
+                            email
+                            phones { number type ext primary }
+                        }
+
+                        consumer_advertisers {
+                            name
+                            phone
+                            href
+                            type
+                        }
+
+                        nearbySchools: nearby_schools(radius: 5.0, limit_per_level: 3) {
+                            __typename schools { district { __typename id name } }
+                        }
+                        taxHistory: tax_history { __typename tax year assessment { __typename building land total } }
+                        estimates {
+                            __typename
+                            currentValues: current_values {
+                                __typename
+                                source { __typename type name }
+                                estimate
+                                estimateHigh: estimate_high
+                                estimateLow: estimate_low
+                                date
+                                isBestHomeValue: isbest_homevalue
+                            }
+                        }
+                    }
+                }"""
+
+        variables = {"property_id": property_id}
+        response = self.session.post(self.PROPERTY_GQL, json={"query": query, "variables": variables})
+        data = response.json()
+
+        def get_key(keys: list):
+            try:
+                value = data
+                for key in keys:
+                    value = value[key]
+
+                return value or {}
+            except (KeyError, TypeError, IndexError):
+                return {}
+
+        agents = get_key(["data", "home", "advertisers"])
+        advertisers = get_key(["data", "home", "consumer_advertisers"])
+
+        schools = get_key(["data", "home", "nearbySchools", "schools"])
+        assessed_value = get_key(["data", "home", "taxHistory", 0, "assessment", "total"])
+        estimated_value = get_key(["data", "home", "estimates", "currentValues", 0, "estimate"])
+
+        agents = [Agent(name=ad["name"], email=ad["email"], phones=ad["phones"]) for ad in agents]
+
+        brokers = [
+            Broker(name=ad["name"], phone=ad["phone"], website=ad["href"])
+            for ad in advertisers
+            if ad.get("type") != "Agent"
+        ]
+
+        schools = [school["district"]["name"] for school in schools if school["district"].get("name")]
+        return {
+            "agents": agents if agents else None,
+            "brokers": brokers if brokers else None,
+            "schools": schools if schools else None,
+            "assessed_value": assessed_value if assessed_value else None,
+            "estimated_value": estimated_value if estimated_value else None,
+        }
 
     @staticmethod
     def _parse_neighborhoods(result: dict) -> Optional[str]:
@@ -646,19 +766,25 @@ class RealtorScraper(Scraper):
 
         return address_part
 
-    def _parse_address(self, result: dict, search_type):
+    @staticmethod
+    def _parse_address(result: dict, search_type):
         if search_type == "general_search":
-            address = result['location']['address']
+            address = result["location"]["address"]
         else:
             address = result["address"]
 
         return Address(
-            street=" ".join([
-                self.handle_none_safely(address.get('street_number')),
-                self.handle_none_safely(address.get('street_direction')),
-                self.handle_none_safely(address.get('street_name')),
-                self.handle_none_safely(address.get('street_suffix')),
-            ]).strip(),
+            full_line=address.get("line"),
+            street=" ".join(
+                part
+                for part in [
+                    address.get("street_number"),
+                    address.get("street_direction"),
+                    address.get("street_name"),
+                    address.get("street_suffix"),
+                ]
+                if part is not None
+            ).strip(),
             unit=address["unit"],
             city=address["city"],
             state=address["state_code"],
@@ -680,22 +806,27 @@ class RealtorScraper(Scraper):
         if result and "primary_photo" in result:
             primary_photo_info = result["primary_photo"]
             if primary_photo_info and "href" in primary_photo_info:
-                primary_photo_href = primary_photo_info["href"]
-                primary_photo = primary_photo_href.replace("s.jpg", "od-w480_h360_x2.webp?w=1080&q=75")
+                primary_photo_href = primary_photo_info["href"] if "href" in primary_photo_info else None
+                primary_photo = primary_photo_href.replace("s.jpg", "od-w480_h360_x2.webp?w=1080&q=75") if primary_photo_href else None
 
         return Description(
             primary_photo=primary_photo,
             alt_photos=RealtorScraper.process_alt_photos(result.get("photos")),
-            style=PropertyType(style).value if style else None,
+            style=PropertyType(style) if style else None,
             beds=description_data.get("beds"),
             baths_full=description_data.get("baths_full"),
             baths_half=description_data.get("baths_half"),
             sqft=description_data.get("sqft"),
             lot_sqft=description_data.get("lot_sqft"),
-            sold_price=description_data.get("sold_price"),
+            sold_price=(
+                description_data.get("sold_price")
+                if result.get("last_sold_date") or result["list_price"] != description_data.get("sold_price")
+                else None
+            ),  #: has a sold date or list and sold price are different
             year_built=description_data.get("year_built"),
             garage=description_data.get("garage"),
             stories=description_data.get("stories"),
+            text=description_data.get("text"),
         )
 
     @staticmethod
@@ -707,12 +838,12 @@ class RealtorScraper(Scraper):
         today = datetime.now()
 
         if list_date:
-            if result["status"] == 'sold':
+            if result["status"] == "sold":
                 if last_sold_date:
                     days = (last_sold_date - list_date).days
                     if days >= 0:
                         return days
-            elif result["status"] in ('for_sale', 'for_rent'):
+            elif result["status"] in ("for_sale", "for_rent"):
                 days = (today - list_date).days
                 if days >= 0:
                     return days

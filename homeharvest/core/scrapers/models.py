@@ -1,3 +1,4 @@
+from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
@@ -23,13 +24,22 @@ class ListingType(Enum):
     SOLD = "SOLD"
 
 
+@dataclass
+class Agent:
+    name: str | None = None
+    phone: str | None = None
+
+
 class PropertyType(Enum):
     APARTMENT = "APARTMENT"
     BUILDING = "BUILDING"
     COMMERCIAL = "COMMERCIAL"
+    GOVERNMENT = "GOVERNMENT"
+    INDUSTRIAL = "INDUSTRIAL"
     CONDO_TOWNHOME = "CONDO_TOWNHOME"
     CONDO_TOWNHOME_ROWHOME_COOP = "CONDO_TOWNHOME_ROWHOME_COOP"
     CONDO = "CONDO"
+    CONDOP = "CONDOP"
     CONDOS = "CONDOS"
     COOP = "COOP"
     DUPLEX_TRIPLEX = "DUPLEX_TRIPLEX"
@@ -46,6 +56,7 @@ class PropertyType(Enum):
 
 @dataclass
 class Address:
+    full_line: str | None = None
     street: str | None = None
     unit: str | None = None
     city: str | None = None
@@ -67,6 +78,30 @@ class Description:
     year_built: int | None = None
     garage: float | None = None
     stories: int | None = None
+    text: str | None = None
+
+
+@dataclass
+class AgentPhone:  #: For documentation purposes only (at the moment)
+    number: str | None = None
+    type: str | None = None
+    primary: bool | None = None
+    ext: str | None = None
+
+
+@dataclass
+class Agent:
+    name: str | None = None
+    phones: list[dict] | AgentPhone | None = None
+    email: str | None = None
+    href: str | None = None
+
+
+@dataclass
+class Broker:
+    name: str | None = None
+    phone: str | None = None
+    website: str | None = None
 
 
 @dataclass
@@ -90,3 +125,10 @@ class Property:
     latitude: float | None = None
     longitude: float | None = None
     neighborhoods: Optional[str] = None
+    county: Optional[str] = None
+    fips_code: Optional[str] = None
+    agents: list[Agent] | None = None
+    brokers: list[Broker] | None = None
+    nearby_schools: list[str] = None
+    assessed_value: int | None = None
+    estimated_value: int | None = None

@@ -1,6 +1,7 @@
+from __future__ import annotations
 import pandas as pd
 from datetime import datetime
-from .core.scrapers.models import Property, ListingType
+from .core.scrapers.models import Property, ListingType, Agent
 from .exceptions import InvalidListingType, InvalidDate
 
 ordered_properties = [
@@ -8,7 +9,9 @@ ordered_properties = [
     "mls",
     "mls_id",
     "status",
+    "text",
     "style",
+    "full_street_line",
     "street",
     "unit",
     "city",
@@ -24,13 +27,25 @@ ordered_properties = [
     "list_date",
     "sold_price",
     "last_sold_date",
+    "assessed_value",
+    "estimated_value",
     "lot_sqft",
     "price_per_sqft",
     "latitude",
     "longitude",
+    "neighborhoods",
+    "county",
+    "fips_code",
     "stories",
     "hoa_fee",
     "parking_garage",
+    "agent",
+    "agent_email",
+    "agent_phones",
+    "broker",
+    "broker_phone",
+    "broker_website",
+    "nearby_schools",
     "primary_photo",
     "alt_photos",
 ]
@@ -42,27 +57,46 @@ def process_result(result: Property) -> pd.DataFrame:
 
     if "address" in prop_data:
         address_data = prop_data["address"]
+        prop_data["full_street_line"] = address_data.full_line
         prop_data["street"] = address_data.street
         prop_data["unit"] = address_data.unit
         prop_data["city"] = address_data.city
         prop_data["state"] = address_data.state
         prop_data["zip_code"] = address_data.zip
 
+    if "agents" in prop_data:
+        agents: list[Agent] | None = prop_data["agents"]
+        if agents:
+            prop_data["agent"] = agents[0].name
+            prop_data["agent_email"] = agents[0].email
+            prop_data["agent_phones"] = agents[0].phones
+
+    if "brokers" in prop_data:
+        brokers = prop_data["brokers"]
+        if brokers:
+            prop_data["broker"] = brokers[0].name
+            prop_data["broker_phone"] = brokers[0].phone
+            prop_data["broker_website"] = brokers[0].website
+
     prop_data["price_per_sqft"] = prop_data["prc_sqft"]
+    prop_data["nearby_schools"] = filter(None, prop_data["nearby_schools"]) if prop_data["nearby_schools"] else None
+    prop_data["nearby_schools"] = ", ".join(set(prop_data["nearby_schools"])) if prop_data["nearby_schools"] else None
 
     description = result.description
-    prop_data["primary_photo"] = description.primary_photo
-    prop_data["alt_photos"] = ", ".join(description.alt_photos) if description.alt_photos is not None else None
-    prop_data["style"] = description.style
-    prop_data["beds"] = description.beds
-    prop_data["full_baths"] = description.baths_full
-    prop_data["half_baths"] = description.baths_half
-    prop_data["sqft"] = description.sqft
-    prop_data["lot_sqft"] = description.lot_sqft
-    prop_data["sold_price"] = description.sold_price
-    prop_data["year_built"] = description.year_built
-    prop_data["parking_garage"] = description.garage
-    prop_data["stories"] = description.stories
+    if description:
+        prop_data["primary_photo"] = description.primary_photo
+        prop_data["alt_photos"] = ", ".join(description.alt_photos) if description.alt_photos else None
+        prop_data["style"] = description.style if isinstance(description.style, str) else description.style.value if description.style else None
+        prop_data["beds"] = description.beds
+        prop_data["full_baths"] = description.baths_full
+        prop_data["half_baths"] = description.baths_half
+        prop_data["sqft"] = description.sqft
+        prop_data["lot_sqft"] = description.lot_sqft
+        prop_data["sold_price"] = description.sold_price
+        prop_data["year_built"] = description.year_built
+        prop_data["parking_garage"] = description.garage
+        prop_data["stories"] = description.stories
+        prop_data["text"] = description.text
 
     properties_df = pd.DataFrame([prop_data])
     properties_df = properties_df.reindex(columns=ordered_properties)
@@ -72,9 +106,7 @@ def process_result(result: Property) -> pd.DataFrame:
 
 def validate_input(listing_type: str) -> None:
     if listing_type.upper() not in ListingType.__members__:
-        raise InvalidListingType(
-            f"Provided listing type, '{listing_type}', does not exist."
-        )
+        raise InvalidListingType(f"Provided listing type, '{listing_type}', does not exist.")
 
 
 def validate_dates(date_from: str | None, date_to: str | None) -> None:
@@ -88,5 +120,5 @@ def validate_dates(date_from: str | None, date_to: str | None) -> None:
 
             if date_to_obj < date_from_obj:
                 raise InvalidDate("date_to must be after date_from.")
-        except ValueError as e:
+        except ValueError:
             raise InvalidDate(f"Invalid date format or range")
