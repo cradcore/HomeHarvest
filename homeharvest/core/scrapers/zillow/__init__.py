@@ -8,8 +8,6 @@ import datetime
 import re
 import json
 
-import tls_client
-
 from .. import Scraper
 from requests.exceptions import HTTPError
 from ....exceptions import GeoCoordsNotFound, NoResultsFound
@@ -19,10 +17,6 @@ import urllib.parse
 
 class ZillowScraper(Scraper):
     def __init__(self, scraper_input):
-        session = tls_client.Session(
-            client_identifier="chrome112", random_tls_extension_order=True
-        )
-
         super().__init__(scraper_input)
 
         self.session.headers.update({
@@ -175,20 +169,24 @@ class ZillowScraper(Scraper):
             if "hdpData" in result:
                 home_info = result["hdpData"]["homeInfo"]
                 property_obj = Property(
-                    property_url=f"https://www.zillow.com{result['detailUrl']}",
                     site_name=self.site_name,
                     mls=None,
                     mls_id=result.get("info1String").split("MLS ID #")[1] if "info1String" in result and "MLS ID #" in result["info1String"] else None,
+                    property_url=f"https://www.zillow.com{result['detailUrl']}",
+                    property_id=home_info["zpid"],
+                    listing_id=home_info["zpid"],
                     status=home_info.get("homeStatus"),
                     list_price=re.sub(r'[^0-9\-.]', '', result.get("price")),
+                    list_price_min=re.sub(r'[^0-9\-.]', '', result.get("price")),
+                    list_price_max=re.sub(r'[^0-9\-.]', '', result.get("price")),
                     list_date=_parse_list_date(home_info["timeOnZillow"]),
                     prc_sqft=int(home_info["price"] // home_info["livingArea"]) if "livingArea" in home_info and int(home_info["livingArea"]) != 0 and "price" in home_info else None,
                     last_sold_date=None,
+                    new_construction=None,
                     hoa_fee=None,
                     address=_parse_address(result),
                     latitude=result["latLong"]["latitude"],
                     longitude=result["latLong"]["longitude"],
-                    neighborhoods=None,
                     description=Description(
                         primary_photo=result["imgSrc"],
                         alt_photos=None,
@@ -202,24 +200,36 @@ class ZillowScraper(Scraper):
                         year_built=None,
                         garage=None,
                         stories=None
-                    )
+                    ),
+                    neighborhoods=None,
+                    county=None,
+                    fips_code=None,
+                    days_on_mls=self.calculate_days_on_zillow(home_info["timeOnZillow"]),
+                    nearby_schools=None,
+                    assessed_value=None,
+                    estimated_value=self.calculate_estimated_value(home_info),
+                    advertisers=None
                 )
             elif "isBuilding" in result:
                 property_obj = Property(
-                    property_url=f"https://www.zillow.com{result['detailUrl']}",
                     site_name=self.site_name,
                     mls=None,
                     mls_id=result.get("info1String").split("MLS ID #")[1] if "info1String" in result and "MLS ID #" in result["info1String"] else None,
+                    property_url=f"https://www.zillow.com{result['detailUrl']}",
+                    property_id=result["plid"],
+                    listing_id=result["plid"],
                     status=result["statusType"],
                     list_price=re.sub(r'[^0-9\-.]', '', result.get("price")),
+                    list_price_min=re.sub(r'[^0-9\-.]', '', result.get("price")),
+                    list_price_max=re.sub(r'[^0-9\-.]', '', result.get("price")),
                     list_date=_parse_list_date(result["timeOnZillow"]),
                     prc_sqft=int(re.sub(r'[^0-9\-.]', '', result.get("price"))) // result["minArea"] if "minArea" in result and int(result["minArea"]) != 0 and "price" in result else None,
                     last_sold_date=None,
+                    new_construction=None,
                     hoa_fee=None,
                     address=_parse_address(result),
                     latitude=result["latLong"]["latitude"],
                     longitude=result["latLong"]["longitude"],
-                    neighborhoods=None,
                     description=Description(
                         primary_photo=result["imgSrc"],
                         alt_photos=None,
@@ -233,7 +243,15 @@ class ZillowScraper(Scraper):
                         year_built=None,
                         garage=None,
                         stories=None
-                    )
+                    ),
+                    neighborhoods=None,
+                    county=None,
+                    fips_code=None,
+                    days_on_mls=self.calculate_days_on_zillow(result["timeOnZillow"]),
+                    nearby_schools=None,
+                    assessed_value=None,
+                    estimated_value=None,
+                    advertisers=None
                 )
 
             properties_list.append(property_obj)
@@ -267,6 +285,15 @@ class ZillowScraper(Scraper):
             latitude=property_data.get("latitude"),
             longitude=property_data.get("longitude")
         )
+
+    def calculate_days_on_zillow(self, timeOnZillow: int) -> int:
+        return int(timeOnZillow / 86400000)
+
+    def calculate_estimated_value(self, home_info) -> int:
+        if home_info["homeStatus"] == "FOR_RENT":
+            return home_info["zestimate"] if "zestimate" in home_info else None
+        else:
+            return home_info["rentZestimate"] if "rentZestimate" in home_info else None
 
 @staticmethod
 def _parse_address(result: dict):

@@ -43,6 +43,7 @@ properties = scrape_property(
   location="San Diego, CA",
   site_name="zillow",
   listing_type="sold",  # or (for_sale, for_rent, pending)
+  property_type='single_family',
   past_days=30,  # sold in last 30 days - listed in last 30 days if (for_sale, for_rent)
 
   # date_from="2023-05-01", # alternative to past_days
@@ -104,13 +105,25 @@ homeharvest "San Francisco, CA" -l for_rent -o excel -f HomeHarvest
 ```
 Required
 ├── location (str): The address in various formats - this could be just a zip code, a full address, or city/state, etc.
-└── listing_type (option): Choose the type of listing.
+├── listing_type (option): Choose the type of listing.
     - 'for_rent'
     - 'for_sale'
     - 'sold'
-    - 'pending'
+    - 'pending' (for pending/contingent sales)
 
 Optional
+├── property_type (list): Choose the type of properties.
+    - 'single_family'
+    - 'multi_family'
+    - 'condos'
+    - 'condo_townhome_rowhome_coop'
+    - 'condo_townhome'
+    - 'townhomes'
+    - 'duplex_triplex'
+    - 'farm'
+    - 'land'
+    - 'mobile'
+
 ├── radius (decimal): Radius in miles to find comparable properties based on individual addresses.
 │    Example: 5.5 (fetches properties within a 5.5-mile radius if location is set to a specific address; otherwise, ignored)
 │
@@ -128,9 +141,11 @@ Optional
 │
 ├── proxy (string): In format 'http://user:pass@host:port'
 │
-├── extra_property_data (True/False): Increases requests by O(n). If set, this fetches additional property data (e.g. agent, broker, property evaluations etc.)
+├── extra_property_data (True/False): Increases requests by O(n). If set, this fetches additional property data for general searches (e.g. schools, tax appraisals etc.)
 │
-└── exclude_pending (True/False): If set, excludes pending properties from the results unless listing_type is 'pending'
+├── exclude_pending (True/False): If set, excludes 'pending' properties from the 'for_sale' results unless listing_type is 'pending'
+│
+└── limit (integer): Limit the number of properties to fetch. Max & default is 10000.
 ```
 
 ### Property Schema
@@ -138,6 +153,8 @@ Optional
 Property
 ├── Basic Information:
 │ ├── property_url
+│ ├── property_id
+│ ├── listing_id
 │ ├── mls
 │ ├── mls_id
 │ └── status
@@ -157,17 +174,20 @@ Property
 │ ├── sqft
 │ ├── year_built
 │ ├── stories
+│ ├── garage
 │ └── lot_sqft
 
 ├── Property Listing Details:
 │ ├── days_on_mls
 │ ├── list_price
+│ ├── list_price_min
+│ ├── list_price_max
 │ ├── list_date
 │ ├── pending_date
 │ ├── sold_price
 │ ├── last_sold_date
 │ ├── price_per_sqft
-│ ├── parking_garage
+│ ├── new_construction
 │ └── hoa_fee
 
 ├── Location Details:
@@ -175,21 +195,31 @@ Property
 │ ├── longitude
 │ ├── nearby_schools
 
-
 ├── Agent Info:
-│ ├── agent
+│ ├── agent_id
+│ ├── agent_name
 │ ├── agent_email
 │ └── agent_phone
 
 ├── Broker Info:
-│ ├── broker
-│ ├── broker_email
-│ └── broker_website
+│ ├── broker_id
+│ └── broker_name
+
+├── Builder Info:
+│ ├── builder_id
+│ └── builder_name
+
+├── Office Info:
+│ ├── office_id
+│ ├── office_name
+│ ├── office_phones
+│ └── office_email
+
 ```
 
 ### Exceptions
 The following exceptions may be raised when using HomeHarvest:
 
-- `InvalidListingType` - valid options: `for_sale`, `for_rent`, `sold`
+- `InvalidListingType` - valid options: `for_sale`, `for_rent`, `sold`, `pending`.
 - `InvalidDate` - date_from or date_to is not in the format YYYY-MM-DD.
 - `AuthenticationError` - Realtor.com token request failed.

@@ -105,8 +105,12 @@ def test_realtor():
             location="2530 Al Lipscomb Way",
             listing_type="for_sale",
         ),
-        scrape_property(location="Phoenix, AZ", listing_type="for_rent"),  #: does not support "city, state, USA" format
-        scrape_property(location="Dallas, TX", listing_type="sold"),  #: does not support "city, state, USA" format
+        scrape_property(
+            location="Phoenix, AZ", listing_type="for_rent", limit=1000
+        ),  #: does not support "city, state, USA" format
+        scrape_property(
+            location="Dallas, TX", listing_type="sold", limit=1000
+        ),  #: does not support "city, state, USA" format
         scrape_property(location="85281"),
     ]
 
@@ -114,10 +118,13 @@ def test_realtor():
 
 
 def test_realtor_city():
-    results = scrape_property(
-        location="Atlanta, GA",
-        listing_type="for_sale",
-    )
+    results = scrape_property(location="Atlanta, GA", listing_type="for_sale", limit=1000)
+
+    assert results is not None and len(results) > 0
+
+
+def test_realtor_land():
+    results = scrape_property(location="Atlanta, GA", listing_type="for_sale", property_type=["land"], limit=1000)
 
     assert results is not None and len(results) > 0
 
@@ -127,6 +134,7 @@ def test_realtor_bad_address():
         location="abceefg ju098ot498hh9",
         listing_type="for_sale",
     )
+
     if len(bad_results) == 0:
         assert True
 
@@ -140,18 +148,23 @@ def test_realtor_foreclosed():
 
 
 def test_realtor_agent():
-    scraped = scrape_property(location="Detroit, MI", listing_type="for_sale")
-    assert scraped["agent"].nunique() > 1
+    scraped = scrape_property(location="Detroit, MI", listing_type="for_sale", limit=1000, extra_property_data=False)
+    assert scraped["agent_name"].nunique() > 1
 
 
 def test_realtor_without_extra_details():
     results = [
         scrape_property(
-            location="15509 N 172nd Dr, Surprise, AZ 85388",
+            location="00741",
+            listing_type="sold",
+            limit=10,
             extra_property_data=False,
         ),
         scrape_property(
-            location="15509 N 172nd Dr, Surprise, AZ 85388",
+            location="00741",
+            listing_type="sold",
+            limit=10,
+            extra_property_data=True,
         ),
     ]
 
@@ -182,6 +195,95 @@ def test_style_value_error():
         location="Alaska, AK",
         listing_type="sold",
         extra_property_data=False,
+        limit=1000,
     )
 
     assert results is not None and len(results) > 0
+
+
+def test_primary_image_error():
+    results = scrape_property(
+        location="Spokane, PA",
+        listing_type="for_rent",  # or (for_sale, for_rent, pending)
+        past_days=360,
+        radius=3,
+        extra_property_data=False,
+    )
+
+    assert results is not None and len(results) > 0
+
+
+def test_limit():
+    over_limit = 876
+    extra_params = {"limit": over_limit}
+
+    over_results = scrape_property(
+        location="Waddell, AZ",
+        listing_type="for_sale",
+        **extra_params,
+    )
+
+    assert over_results is not None and len(over_results) <= over_limit
+
+    under_limit = 1
+    under_results = scrape_property(
+        location="Waddell, AZ",
+        listing_type="for_sale",
+        limit=under_limit,
+    )
+
+    assert under_results is not None and len(under_results) == under_limit
+
+
+def test_apartment_list_price():
+    results = scrape_property(
+        location="Spokane, WA",
+        listing_type="for_rent",  # or (for_sale, for_rent, pending)
+        extra_property_data=False,
+    )
+
+    assert results is not None
+
+    results = results[results["style"] == "APARTMENT"]
+
+    #: get percentage of results with atleast 1 of any column not none, list_price, list_price_min, list_price_max
+    assert (
+        len(results[results[["list_price", "list_price_min", "list_price_max"]].notnull().any(axis=1)]) / len(results)
+        > 0.5
+    )
+
+
+def test_builder_exists():
+    listing = scrape_property(
+        location="18149 W Poston Dr, Surprise, AZ 85387",
+        extra_property_data=False,
+    )
+
+    assert listing is not None
+    assert listing["builder_name"].nunique() > 0
+
+
+def test_phone_number_matching():
+    searches = [
+        scrape_property(
+            location="Phoenix, AZ",
+            listing_type="for_sale",
+            limit=100,
+        ),
+        scrape_property(
+            location="Phoenix, AZ",
+            listing_type="for_sale",
+            limit=100,
+        ),
+    ]
+
+    assert all([search is not None for search in searches])
+
+    #: random row
+    row = searches[0][searches[0]["agent_phones"].notnull()].sample()
+
+    #: find matching row
+    matching_row = searches[1].loc[searches[1]["property_url"] == row["property_url"].values[0]]
+
+    #: assert phone numbers are the same
+    assert row["agent_phones"].values[0] == matching_row["agent_phones"].values[0]
