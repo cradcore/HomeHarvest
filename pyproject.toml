@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "homeharvest"
-version = "0.4.4"
+version = "0.4.5"
 description = "Real estate scraping library with Zillow/Realtor.com support"
-authors = ["Zachary Hampton <zachary@bunsly.com>", "Cullen Watson <cullen@bunsly.com>", "21273406+cradcore@users.noreply.github.com"]
+authors = ["21273406+cradcore@users.noreply.github.com"]
 homepage = "https://github.com/cradcore/HomeHarvest"
 readme = "README.md"
 
