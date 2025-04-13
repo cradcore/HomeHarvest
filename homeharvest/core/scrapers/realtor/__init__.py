@@ -41,7 +41,7 @@ class RealtorScraper(Scraper):
     PROPERTY_URL = "https://www.realtor.com/realestateandhomes-detail/"
     PROPERTY_GQL = "https://graph.realtor.com/graphql"
     ADDRESS_AUTOCOMPLETE_URL = "https://parser-external.geo.moveaws.com/suggest"
-    NUM_PROPERTY_WORKERS = 20
+    NUM_PROPERTY_WORKERS = 10
     DEFAULT_PAGE_SIZE = 200
 
     def __init__(self, scraper_input):
